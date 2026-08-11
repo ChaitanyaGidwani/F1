@@ -1,8 +1,36 @@
 # Deploying
 
-The target is a **Hugging Face Docker Space** running the real FastAPI backend
-and the frontend it serves, so the public link is the actual submission rather
-than a cut-down demo.
+## Current status: the demo runs locally
+
+Hugging Face Spaces is **not available on the free tier** for this app. As of
+now only static, server-less Spaces are free:
+
+- Personal account: `402 ... requires a PRO subscription`
+- Organization: `402 ... requires a Team or Enterprise plan`
+
+Our app needs a Python process to run the classifier, so a static Space cannot
+host it. The demo therefore runs locally:
+
+```bash
+make serve                  # then open http://127.0.0.1:8000
+```
+
+Teammates do not need the training run or a copy of the weights. Point the app
+at the published model and it fetches them once:
+
+```bash
+WW_MODEL_ID=weather-whiplash/vit-track-condition make serve
+```
+
+Everything below is a complete, locally verified deployment, ready for whenever
+a paid plan or a different host is worth it. Nothing about it is theoretical:
+the image builds and the container serves the real app, see step 3.
+
+## If you do get a paid plan
+
+The target is a Docker Space running the real FastAPI backend and the frontend
+it serves, so the public link is the actual submission rather than a cut-down
+demo.
 
 Order matters: the model has to be on the Hub before the Space is built, because
 the Docker build bakes the weights into an image layer.
@@ -116,6 +144,26 @@ Spaces build x86_64 from the same Dockerfile. The local build verifies the
 Dockerfile and the dependency set, not the exact artifact HF will run.
 
 ## Troubleshooting
+
+**402 Payment Required when creating the Space.**
+
+```
+Static Spaces are free for everyone, but hosting Gradio and Docker Spaces
+on free cpu-basic requires a Team or Enterprise plan for organization <org>
+```
+
+Organizations need a paid plan to run non-static Spaces; personal accounts run
+them free. Put the Space on a personal account and leave the model and dataset
+on the org:
+
+```bash
+python -m deploy.push_space --repo-id <your-username>/weather-whiplash \
+                            --model-id $ORG/vit-track-condition
+```
+
+The model stays public under the org, so the Space can still download it at
+build time. The hackathon's org requirement is satisfied by the dataset and
+model living there.
 
 **Header says "CLIP zero-shot (fallback)".** The build could not fetch the
 model. Check that `MODEL_ID` exists under the Space's Settings → Variables, and

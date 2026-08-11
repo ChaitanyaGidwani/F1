@@ -102,32 +102,35 @@ python -m training.evaluate                       # vs CLIP zero-shot
 
 See [docs/DATASET.md](docs/DATASET.md) for the labelling guide.
 
-## Publishing and deploying
+## On the Hub
 
-Dataset, model and Space live under your org namespace. Hub walkthrough:
-[docs/PUSH_TO_HUB.md](docs/PUSH_TO_HUB.md). Deployment:
-[docs/DEPLOY.md](docs/DEPLOY.md).
+Both artefacts are public under the team org:
+
+- Model: <https://huggingface.co/weather-whiplash/vit-track-condition>
+- Dataset: <https://huggingface.co/datasets/weather-whiplash/trackside-condition>
+
+Anyone can run the app against the published model without training anything or
+copying weights around:
 
 ```bash
-source .venv/bin/activate       # hf, torch and transformers live in here
-hf auth login                   # write token, stored in your own keyring
-export ORG=your-org-name
-
-python -m training.push_model       --repo-id $ORG/vit-track-condition
-python -m data_pipeline.push_dataset --repo-id $ORG/trackside-condition
-python -m deploy.push_space         --repo-id $ORG/weather-whiplash \
-                                    --model-id $ORG/vit-track-condition
+WW_MODEL_ID=weather-whiplash/vit-track-condition make serve
 ```
 
-The last command deploys a Docker Space running this exact backend and
-frontend, so the public link is the real app. The model has to be pushed first:
-the image bakes the weights in at build time, which keeps cold starts fast and
-means a running Space needs no network to classify a frame.
+The weights download once and are cached; classification still happens
+in-process, with no per-request network call.
 
-Verify the container before deploying (`make docker-test`) and it builds on your
-machine in a couple of minutes instead of failing in a Space build log.
+To republish after retraining, see [docs/PUSH_TO_HUB.md](docs/PUSH_TO_HUB.md).
 
-`space/push_space.py` deploys the same logic behind a Gradio UI as a backup link.
+## Hosting
+
+The demo runs locally. Hugging Face Spaces now requires a paid plan for anything
+with a backend (PRO for personal accounts, Team/Enterprise for orgs) and only
+static, server-less Spaces are free, so a hosted link is not available on the
+free tier.
+
+A complete Docker deployment is built and locally verified in `deploy/` for
+whenever a paid plan or another host is on the table. See
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## API
 
