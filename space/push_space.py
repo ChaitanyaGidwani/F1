@@ -3,7 +3,7 @@
 Uploads `space/app.py` as the Space entrypoint plus the shared `app/` package,
 so the Space runs the exact same trend and recommendation code as the backend.
 
-    huggingface-cli login
+    source .venv/bin/activate && hf auth login
     python -m space.push_space --repo-id <your-org>/weather-whiplash \\
         --model-id <your-org>/vit-track-condition
 """

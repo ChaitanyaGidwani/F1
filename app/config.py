@@ -11,7 +11,10 @@ DEFAULT_MODEL_DIR = ROOT / "models" / "vit-track-condition"
 
 
 def _env(name: str, default: str) -> str:
-    return os.environ.get(name, default)
+    # An empty variable counts as unset. Container runtimes set env vars to ""
+    # for unfilled build args, and an empty WW_MODEL_ID would otherwise resolve
+    # to Path("") -> "." and send the loader looking for a model in the cwd.
+    return os.environ.get(name, "").strip() or default
 
 
 @dataclass(frozen=True)

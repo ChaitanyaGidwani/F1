@@ -102,18 +102,32 @@ python -m training.evaluate                       # vs CLIP zero-shot
 
 See [docs/DATASET.md](docs/DATASET.md) for the labelling guide.
 
-## Publishing to the Hub
+## Publishing and deploying
 
-Dataset, model and Space push under your org namespace. Walkthrough including
-org setup: [docs/PUSH_TO_HUB.md](docs/PUSH_TO_HUB.md).
+Dataset, model and Space live under your org namespace. Hub walkthrough:
+[docs/PUSH_TO_HUB.md](docs/PUSH_TO_HUB.md). Deployment:
+[docs/DEPLOY.md](docs/DEPLOY.md).
 
 ```bash
-huggingface-cli login
-python -m data_pipeline.push_dataset --repo-id <org>/trackside-condition
-python -m training.push_model       --repo-id <org>/vit-track-condition
-python -m space.push_space          --repo-id <org>/weather-whiplash \
-                                    --model-id <org>/vit-track-condition
+source .venv/bin/activate       # hf, torch and transformers live in here
+hf auth login                   # write token, stored in your own keyring
+export ORG=your-org-name
+
+python -m training.push_model       --repo-id $ORG/vit-track-condition
+python -m data_pipeline.push_dataset --repo-id $ORG/trackside-condition
+python -m deploy.push_space         --repo-id $ORG/weather-whiplash \
+                                    --model-id $ORG/vit-track-condition
 ```
+
+The last command deploys a Docker Space running this exact backend and
+frontend, so the public link is the real app. The model has to be pushed first:
+the image bakes the weights in at build time, which keeps cold starts fast and
+means a running Space needs no network to classify a frame.
+
+Verify the container before deploying (`make docker-test`) and it builds on your
+machine in a couple of minutes instead of failing in a Space build log.
+
+`space/push_space.py` deploys the same logic behind a Gradio UI as a backup link.
 
 ## API
 

@@ -1,6 +1,6 @@
 """Push the fine-tuned classifier to the Hub with a model card.
 
-    huggingface-cli login
+    source .venv/bin/activate && hf auth login
     python -m training.push_model --repo-id <your-org>/vit-track-condition
 """
 

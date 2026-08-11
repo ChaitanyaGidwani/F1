@@ -2,8 +2,11 @@ PY := .venv/bin/python
 PORT ?= 8000
 ORG ?= your-org
 
+SPACE ?= weather-whiplash
+MODEL ?= vit-track-condition
+
 .PHONY: help setup test serve collect triage sheets dataset demo train eval \
-        push-dataset push-model push-space clean
+        login whoami push-dataset push-model push-space stage-space docker-test deploy clean
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -44,7 +47,13 @@ train:  ## fine-tune the ViT backbone
 eval:  ## fine-tuned vs CLIP zero-shot on the held-out test split
 	$(PY) -m training.evaluate
 
-# --- hub (see docs/PUSH_TO_HUB.md; run `huggingface-cli login` first) ---
+# --- hub (see docs/PUSH_TO_HUB.md; run `make login` first) ---
+
+login:  ## log in to Hugging Face (uses the venv's hf CLI)
+	.venv/bin/hf auth login
+
+whoami:  ## show which Hugging Face account is logged in
+	.venv/bin/hf auth whoami
 
 push-dataset:  ## push the dataset  (make push-dataset ORG=my-org)
 	$(PY) -m data_pipeline.push_dataset --repo-id $(ORG)/trackside-condition
@@ -52,9 +61,22 @@ push-dataset:  ## push the dataset  (make push-dataset ORG=my-org)
 push-model:  ## push the fine-tuned model
 	$(PY) -m training.push_model --repo-id $(ORG)/vit-track-condition
 
-push-space:  ## deploy the Gradio Space
-	$(PY) -m space.push_space --repo-id $(ORG)/weather-whiplash \
-		--model-id $(ORG)/vit-track-condition
+push-space:  ## deploy the Gradio Space (backup demo link)
+	$(PY) -m space.push_space --repo-id $(ORG)/$(SPACE)-gradio \
+		--model-id $(ORG)/$(MODEL)
+
+# --- deploy the real app as a Docker Space (see docs/DEPLOY.md) ---
+
+stage-space:  ## assemble the Space tree into build/space
+	$(PY) -m deploy.push_space --stage build/space --model-id $(ORG)/$(MODEL)
+
+docker-test: stage-space  ## build and run the Space image locally on :7860
+	docker build -t $(SPACE):test build/space
+	docker run --rm -p 7860:7860 \
+		-v "$(PWD)/models/$(MODEL):/model:ro" -e WW_MODEL_ID=/model $(SPACE):test
+
+deploy:  ## deploy the Docker Space  (make deploy ORG=my-org)
+	$(PY) -m deploy.push_space --repo-id $(ORG)/$(SPACE) --model-id $(ORG)/$(MODEL)
 
 clean:  ## remove build artefacts (keeps the downloaded pool)
-	rm -rf .pytest_cache **/__pycache__ data/dataset
+	rm -rf .pytest_cache **/__pycache__ data/dataset build/

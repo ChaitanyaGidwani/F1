@@ -13,3 +13,6 @@ data/review/sheet_*.jpg
 
 # Model weights live on the Hub
 models/
+
+# staged Space tree
+build/

@@ -2,7 +2,7 @@
 
 Run this yourself so the token stays yours:
 
-    huggingface-cli login
+    source .venv/bin/activate && hf auth login
     python -m data_pipeline.push_dataset --repo-id <your-org>/trackside-condition
 
 See docs/PUSH_TO_HUB.md for the org setup.
@@ -40,7 +40,7 @@ size_categories:
 # Trackside Track-Condition Dataset
 
 Frame-level racing-surface condition labels for motorsport imagery:
-**Dry / Damp / Drying / Wet**.
+**Dry / Damp / Wet**.
 
 Built for the *Weather Whiplash* project - a live track-condition detector that
 tells a pit wall whether the circuit is getting safer or riskier, and therefore
@@ -110,8 +110,10 @@ measured against checked labels.
 
 - Skewed toward Formula One and European circuits; other series and surfaces
   are thinly represented.
-- `Damp` and `Drying` are the hardest classes for annotators and models alike -
-  the boundary between them is genuinely continuous.
+- `Damp` is the hardest class for annotators and for models. Its boundaries with
+  both `Dry` and `Wet` are genuinely continuous, and it is by far the least
+  represented, because photographers shoot dramatic conditions and a merely damp
+  track is not dramatic.
 - Photographs are composed shots, not uniformly sampled video frames, so the
   distribution is not identical to a real fixed trackside camera feed.
 """
@@ -123,12 +125,15 @@ def stats_section() -> str:
         return "## Splits\n\nRun `python -m data_pipeline.build_dataset` first."
     stats = json.loads(stats_path.read_text())
     counts = stats["counts"]
-    lines = ["## Splits", "", "| Split | " + " | ".join(CLASSES) + " | Total |",
-             "|---|" + "---|" * (len(CLASSES) + 1)]
+    # Use the classes the build actually kept, not the full vocabulary; a
+    # dropped class would otherwise show as a column of zeroes.
+    classes = stats.get("classes") or CLASSES
+    lines = ["## Splits", "", "| Split | " + " | ".join(classes) + " | Total |",
+             "|---|" + "---|" * (len(classes) + 1)]
     for split, per_class in counts.items():
         total = sum(per_class.values())
         lines.append(
-            f"| {split} | " + " | ".join(str(per_class.get(c, 0)) for c in CLASSES)
+            f"| {split} | " + " | ".join(str(per_class.get(c, 0)) for c in classes)
             + f" | {total} |"
         )
     lines += [

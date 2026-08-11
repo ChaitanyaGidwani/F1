@@ -18,8 +18,11 @@ itself, which is what the rule asks for.
 
 ## 2. Log in locally
 
+Activate the venv first. The `hf` CLI lives there, not on your PATH.
+
 ```bash
-huggingface-cli login
+source .venv/bin/activate
+hf auth login
 ```
 
 Paste a **write** token from <https://huggingface.co/settings/tokens>. It is
@@ -28,8 +31,12 @@ stored in your own keyring by the CLI.
 Verify:
 
 ```bash
-huggingface-cli whoami
+hf auth whoami
 ```
+
+Without activating the venv, prefix everything: `.venv/bin/hf auth login` and
+`.venv/bin/python -m ...`. The older `huggingface-cli` name still works but is
+deprecated.
 
 ## 3. Push the dataset
 
@@ -60,23 +67,33 @@ WW_MODEL_ID=<org>/vit-track-condition .venv/bin/uvicorn app.main:app --port 8000
 
 It is still downloaded once and held in-process - no per-request network call.
 
-## 6. Deploy the Space (optional)
+## 6. Deploy
+
+Full walkthrough in [DEPLOY.md](DEPLOY.md). The primary target is a Docker Space
+running the real backend and frontend:
 
 ```bash
-python -m space.push_space --repo-id <org>/weather-whiplash \
-                           --model-id <org>/vit-track-condition
+python -m deploy.push_space --repo-id <org>/weather-whiplash \
+                            --model-id <org>/vit-track-condition
 ```
 
-Uploads the Gradio app, `requirements.txt`, a Space card, and the shared `app/`
-package - so the Space runs the same trend code as the backend rather than a
-second copy that can drift. Give it a few minutes to build.
+Push the model first (step 4). The image bakes the weights in at build time, so
+the model repo has to exist and be public before the Space builds.
+
+A Gradio Space is available as a backup link. It shares the same trend and
+recommendation code, so the two demos cannot drift apart:
+
+```bash
+python -m space.push_space --repo-id <org>/weather-whiplash-gradio \
+                           --model-id <org>/vit-track-condition
+```
 
 ---
 
 ## Checklist
 
 - [ ] Org created, every member invited
-- [ ] `huggingface-cli whoami` shows the org
+- [ ] `hf auth whoami` shows the org
 - [ ] Dataset page loads, card shows split counts, `ATTRIBUTION.csv` present
 - [ ] Model page loads, card shows eval numbers
 - [ ] `pipeline("image-classification", model="<org>/vit-track-condition")` works
