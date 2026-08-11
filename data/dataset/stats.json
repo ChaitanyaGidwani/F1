@@ -1,0 +1,46 @@
+{
+  "total_images": 486,
+  "classes": [
+    "Dry",
+    "Damp",
+    "Wet"
+  ],
+  "dropped_classes": [
+    "Drying"
+  ],
+  "counts": {
+    "train": {
+      "Dry": 141,
+      "Damp": 34,
+      "Wet": 169
+    },
+    "validation": {
+      "Dry": 29,
+      "Damp": 6,
+      "Wet": 36
+    },
+    "test": {
+      "Dry": 29,
+      "Damp": 6,
+      "Wet": 36
+    }
+  },
+  "reviewed_images": 222,
+  "clip_wrong_on_reviewed": 108,
+  "clip_disagreement_rate": 0.4865,
+  "skipped_low_confidence": 98,
+  "min_confidence": 0.55,
+  "license_breakdown": {
+    "CC0": 53,
+    "CC BY-SA 3.0": 51,
+    "CC BY 2.0": 179,
+    "CC BY-SA 2.0": 157,
+    "CC BY-SA 3.0 nl": 10,
+    "CC BY-SA 4.0": 25,
+    "CC BY 4.0": 4,
+    "Public domain": 2,
+    "CC BY-SA 2.0 de": 2,
+    "CC BY 3.0": 2,
+    "CC BY-SA 3.0 de": 1
+  }
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Weather Whiplash — Live Track Condition</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="pulse" id="pulse"></span>
+    <div>
+      <h1>Weather Whiplash</h1>
+      <p>Live track condition detector</p>
+    </div>
+  </div>
+  <div class="status" id="status">
+    <span class="status-chip" id="backendChip">connecting…</span>
+    <span class="status-chip muted" id="deviceChip"></span>
+  </div>
+</header>
+
+<main>
+  <!-- ---------------- left: imagery ---------------- -->
+  <section class="panel viewer">
+    <div class="frame-wrap" id="frameWrap">
+      <img id="frame" alt="Current track frame" hidden />
+      <div class="empty" id="empty">
+        <div class="empty-icon">▦</div>
+        <p><strong>Drop track frames here</strong></p>
+        <p class="dim">One image classifies a single frame. Several images replay as a sequence so the trend can move.</p>
+        <button class="btn primary" id="pick">Choose frames</button>
+        <button class="btn ghost" id="demo">Load demo sequence</button>
+      </div>
+    </div>
+
+    <div class="filmstrip" id="filmstrip"></div>
+
+    <div class="controls">
+      <input type="file" id="file" accept="image/*" multiple hidden />
+      <button class="btn" id="pick2">Add frames</button>
+      <button class="btn" id="replay" disabled>Replay</button>
+      <button class="btn ghost" id="reset">Reset session</button>
+      <input class="weather" id="weather" placeholder="Optional weather note (e.g. rain in 10 min)" />
+    </div>
+  </section>
+
+  <!-- ---------------- right: readout ---------------- -->
+  <section class="panel readout">
+    <div class="card condition-card">
+      <div class="card-label">Track condition</div>
+      <div class="condition" id="condition">—</div>
+      <div class="confidence-row">
+        <div class="confidence-bar"><span id="confidenceFill"></span></div>
+        <span class="confidence-num" id="confidenceNum">—</span>
+      </div>
+      <div class="chips">
+        <span class="chip" id="trendChip">awaiting frames</span>
+        <span class="chip subtle" id="transitionChip" hidden></span>
+      </div>
+    </div>
+
+    <div class="card rec-card" id="recCard">
+      <div class="card-label">Strategy call</div>
+      <p class="rec-message" id="recMessage">Upload frames to begin.</p>
+      <div class="rec-meta">
+        <span class="tire" id="recTire"></span>
+        <span class="action" id="recAction"></span>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="card-label">
+        Condition trend
+        <span class="dim" id="chartMeta"></span>
+      </div>
+      <canvas id="chart" width="720" height="240"></canvas>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="card probs-card">
+      <div class="card-label">Per-class confidence · current frame</div>
+      <div class="probs" id="probs"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

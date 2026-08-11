@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Raw scrape + working data: regenerate with data_pipeline/, don't commit
+data/raw/pool/
+data/raw/manifest.jsonl
+data/raw/candidates.jsonl
+data/raw/presort.jsonl
+data/review/sheet_*.jpg
+
+# Model weights live on the Hub
+models/
