@@ -22,9 +22,15 @@ Everything below the line was the original audit. This is what changed after it.
 
 Numbers after the work: **473 images** (Dry 159 / Damp 76 / Wet 238), 322 human
 decisions, **66 tests**. On the 69-image hand-verified test split the fine-tune
-scores 82.6% against CLIP's 75.4%, which is *not* significant (McNemar p=0.267)
-and is no longer claimed. Damp recall 0.09 -> 0.55 (p=0.062) is the result that
-carries the argument.
+scores 82.6% against CLIP's 75.4%, which is *not* significant (McNemar p=0.302)
+and is no longer claimed. Recall on Dry and Wet is identical between the two
+models; **the entire difference is Damp, 0.09 -> 0.55** (p=0.062).
+
+One extra fix found during the work: training-time evaluation centre-cropped
+while the deployed `pipeline` resizes the whole frame, so the same model scored
+76.8% one way and 82.6% the other and the best checkpoint was chosen on
+preprocessing that never runs. Aligned in `train_vit.py`; the two paths now
+agree exactly.
 
 ### Still open
 
