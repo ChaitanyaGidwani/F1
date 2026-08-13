@@ -123,6 +123,35 @@ _INSUFFICIENT = (
     "Unknown",
 )
 
+#: Escalation ladder, used when a forecast contradicts what the camera sees.
+_LADDER = [ACTION_HOLD, ACTION_MONITOR, ACTION_PREPARE, ACTION_ACT]
+
+_RAIN_WORDS = ("rain", "shower", "storm", "drizzle", "downpour", "thunder", "wet")
+_CLEAR_WORDS = ("clear", "dry", "sun", "sunny", "no rain", "clearing")
+
+
+def forecast_signal(hint: Optional[str]) -> Optional[str]:
+    """Read a free-text weather note as "rain", "clear", or nothing.
+
+    Deliberately a keyword match rather than a forecast API call. A network
+    dependency in the request path is a failure mode, and the note is an
+    operator typing what they have been told, not a structured feed.
+    """
+    if not hint:
+        return None
+    text = hint.lower()
+    # "no rain" contains "rain", so the clear signal is checked first.
+    if any(word in text for word in _CLEAR_WORDS):
+        return "clear"
+    if any(word in text for word in _RAIN_WORDS):
+        return "rain"
+    return None
+
+
+def _escalate(action: str) -> str:
+    index = _LADDER.index(action)
+    return _LADDER[min(index + 1, len(_LADDER) - 1)]
+
 
 def recommend(result: TrendResult, weather_hint: Optional[str] = None) -> Recommendation:
     """Map a trend verdict to a pit-wall message.
@@ -140,6 +169,24 @@ def recommend(result: TrendResult, weather_hint: Optional[str] = None) -> Recomm
         # A fast-moving trend is worth flagging even when the rule says PREPARE.
         if result.trend_strength >= 0.75 and action == ACTION_PREPARE:
             message = f"{message} Conditions changing rapidly."
+
+    # The camera stays authoritative: a forecast can raise the alert level by one
+    # step but never changes the condition or the tyre. A note that agrees with
+    # the track adds nothing, so only a genuine disagreement moves the needle -
+    # rain expected while the surface is still dry is the case this tool exists
+    # to catch early. Escalation stops short of ACT, because committing a car to
+    # the pit lane on the strength of a typed note would be wrong.
+    signal = forecast_signal(weather_hint)
+    conflict = (
+        signal == "rain"
+        and result.trend != TREND_WETTING
+        and result.current_class in (CLASS_DRY, CLASS_DAMP)
+    )
+    if conflict and action != ACTION_ACT:
+        action = _escalate(action)
+        if action == ACTION_ACT:  # never let a note alone demand a stop
+            action = ACTION_PREPARE
+        message = f"{message} Rain forecast while the track is not yet wetting - prepare early."
 
     if weather_hint:
         message = f"{message} (Weather note: {weather_hint})"

@@ -66,6 +66,10 @@ class FineTunedClassifier:
         # Fail loudly at startup rather than mislabelling silently at runtime.
         for label in labels:
             canonical(label)
+        #: The classes this checkpoint can emit. Usually a subset of CLASSES,
+        #: because Drying has no verified training data and is derived by the
+        #: trend layer instead.
+        self.model_classes = sorted(canonical(l) for l in labels)
         logger.info("loaded fine-tuned classifier %s on %s (%s)", model_id, device, labels)
 
     def predict(self, image: Image.Image) -> Dict[str, float]:
@@ -89,6 +93,8 @@ class ClipZeroShotClassifier:
         self.device = device
         self.model = CLIPModel.from_pretrained(model_id).to(device).eval()
         self.processor = CLIPProcessor.from_pretrained(model_id)
+        # Zero-shot can be prompted for every class, though it is poor at Damp.
+        self.model_classes = list(CLASSES)
 
         self._prompts: List[str] = []
         self._owner: List[str] = []

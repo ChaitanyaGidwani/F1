@@ -12,6 +12,7 @@ from app.recommend import (
     ACTION_HOLD,
     ACTION_MONITOR,
     ACTION_PREPARE,
+    forecast_signal,
     recommend,
 )
 from app.trend import (
@@ -68,6 +69,62 @@ def test_weather_hint_is_appended_not_authoritative():
     # Camera says wet, forecast says clear -> we still report wet.
     assert rec.tire == "Full Wet"
     assert "clear skies forecast" in rec.message
+
+
+# ---------------------------------------------------------------- forecast
+
+
+@pytest.mark.parametrize(
+    "hint,expected",
+    [
+        ("radar shows rain in 10 minutes", "rain"),
+        ("heavy showers approaching", "rain"),
+        ("thunderstorm over sector 2", "rain"),
+        ("clear skies for the next hour", "clear"),
+        ("no rain expected", "clear"),  # contains "rain" but means the opposite
+        ("track temp 41C", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_forecast_signal_reading(hint, expected):
+    assert forecast_signal(hint) == expected
+
+
+def test_rain_forecast_on_a_dry_track_raises_the_alert():
+    """The case the tool exists to catch: forecast and camera disagree."""
+    result = analyze(repeat(CLASS_DRY, 12))
+    calm = recommend(result)
+    warned = recommend(result, weather_hint="rain in 10 minutes")
+
+    assert calm.action == ACTION_HOLD
+    assert warned.urgency > calm.urgency
+    assert "prepare early" in warned.message
+    # The camera still decides the condition and the tyre.
+    assert warned.tire == calm.tire
+
+
+def test_rain_forecast_agreeing_with_a_wet_track_changes_nothing():
+    result = analyze(repeat(CLASS_WET, 12))
+    plain = recommend(result)
+    noted = recommend(result, weather_hint="more rain coming")
+    assert noted.action == plain.action
+    assert noted.urgency == plain.urgency
+
+
+def test_forecast_alone_never_demands_a_pit_stop():
+    """A typed note may raise the alert, but not to ACT."""
+    result = analyze(repeat(CLASS_DAMP, 6) + repeat(CLASS_DRY, 6))
+    warned = recommend(result, weather_hint="storm approaching")
+    assert warned.action != ACTION_ACT or recommend(result).action == ACTION_ACT
+
+
+def test_irrelevant_note_does_not_escalate():
+    result = analyze(repeat(CLASS_DRY, 12))
+    plain = recommend(result)
+    noted = recommend(result, weather_hint="track temp 41C")
+    assert noted.action == plain.action
+    assert "track temp 41C" in noted.message
 
 
 def test_every_trend_condition_pair_has_a_rule():

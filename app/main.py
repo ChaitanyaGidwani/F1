@@ -20,7 +20,7 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +33,7 @@ from .inference import Classifier, load_classifier, resolve_device
 from .labels import CLASS_COLORS, CLASSES, WETNESS
 from .recommend import recommend
 from .trend import FramePrediction, TrackConditionTracker, TrendConfig
+from .video import frames_from_video, is_video
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("weather-whiplash")
@@ -40,6 +41,13 @@ logger = logging.getLogger("weather-whiplash")
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = ROOT_DIR / "frontend"
 DEMO_DIR = ROOT_DIR / "data" / "demo"
+
+try:  # video decoding is optional; the app still serves images without it
+    import av  # noqa: F401
+
+    VIDEO_SUPPORTED = True
+except ImportError:  # pragma: no cover
+    VIDEO_SUPPORTED = False
 
 TREND_CONFIG = TrendConfig(
     window=settings.window,
@@ -95,12 +103,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Weather Whiplash", version="1.0.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# The backend serves the frontend, so the demo is same-origin and needs no CORS.
+# A wildcard would let any page on the internet drive this API, so it is opt-in
+# through WW_CORS_ORIGINS rather than the default.
+if settings.cors_origin_list:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 def get_classifier() -> Classifier:
@@ -115,8 +127,52 @@ def read_image(raw: bytes, filename: str) -> Image.Image:
         raise HTTPException(status_code=413, detail=f"{filename} exceeds upload limit")
     try:
         return Image.open(io.BytesIO(raw)).convert("RGB")
-    except (UnidentifiedImageError, OSError):
+    # DecompressionBombError is not an OSError, so without naming it here a
+    # pixel-bomb image escapes as a 500 instead of a clean rejection.
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise HTTPException(status_code=400, detail=f"{filename} is not a readable image")
+
+
+def expand_uploads(uploads: List[UploadFile]) -> List[Tuple[str, Image.Image]]:
+    """Turn uploads into one ordered list of frames.
+
+    A video expands into many frames, an image contributes one, and both end up
+    in the same sequence analysis. The frame ceiling matters: without it a
+    single upload of a few hundred images ties up a worker for minutes.
+    """
+    if len(uploads) > settings.max_frames:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many files: {len(uploads)}, limit is {settings.max_frames}",
+        )
+
+    frames: List[Tuple[str, Image.Image]] = []
+    for index, upload in enumerate(uploads):
+        name = upload.filename or f"frame-{index}"
+        raw = upload.file.read()
+
+        if is_video(upload.filename, upload.content_type):
+            if len(raw) > settings.max_video_bytes:
+                raise HTTPException(
+                    status_code=413, detail=f"{name} exceeds the video size limit"
+                )
+            try:
+                decoded = frames_from_video(
+                    raw, max_frames=settings.video_max_frames
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"{name}: {exc}")
+            logger.info("decoded %d frames from %s", len(decoded), name)
+            frames.extend((f"{name} #{i + 1}", img) for i, img in enumerate(decoded))
+        else:
+            frames.append((name, read_image(raw, name)))
+
+        if len(frames) > settings.max_frames:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Too many frames: limit is {settings.max_frames}",
+            )
+    return frames
 
 
 def classify(image: Image.Image) -> Dict[str, object]:
@@ -150,6 +206,13 @@ def health() -> Dict[str, object]:
         "class_colors": CLASS_COLORS,
         "wetness_scale": WETNESS,
         "window": settings.window,
+        "max_frames": settings.max_frames,
+        "video_supported": VIDEO_SUPPORTED,
+        # What the classifier can actually emit, which is not the same as the
+        # states the system reports: Drying comes from the trend layer. The UI
+        # reads this so the legend can say so rather than implying the model
+        # predicts a class it was never trained on.
+        "model_classes": getattr(classifier, "model_classes", None),
     }
 
 
@@ -185,12 +248,17 @@ def sequence(
 ) -> Dict[str, object]:
     """Classify an ordered burst of frames - the 'drying track' demo path.
 
+    Accepts images, a video, or a mix. A video is decoded into frames sampled
+    across the whole clip, so an mp4 and a folder of stills take the same path.
+
     Frames are processed in the order given, and the trend after *each* frame is
     returned, so the UI can replay how the verdict evolved rather than only
     showing the final state.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No frames uploaded")
+
+    frames = expand_uploads(files)
 
     session_id = session_id or uuid.uuid4().hex
     if reset:
@@ -200,15 +268,14 @@ def sequence(
     steps = []
     trend = None
     rec = None
-    for index, upload in enumerate(files):
-        image = read_image(upload.file.read(), upload.filename or f"frame-{index}")
+    for index, (name, image) in enumerate(frames):
         result = classify(image)
         trend = tracker.update(result["prediction"])  # type: ignore[arg-type]
         rec = recommend(trend, weather_hint=weather_hint)
         steps.append(
             {
                 "index": index,
-                "filename": upload.filename,
+                "filename": name,
                 "frame": frame_payload(
                     result["prediction"], result["probs"], result["latency_ms"]  # type: ignore[arg-type]
                 ),

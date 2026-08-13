@@ -1,0 +1,14 @@
+{
+  "BN0": ["Dry","Reject","Damp","Reject","Damp","Dry","Wet","Dry","Dry","Damp",
+          "Dry","Dry","Dry","Reject","Damp","Dry","Damp","Dry","Wet","Reject",
+          "Damp","Dry","Damp","Wet","Damp"],
+  "BN1": ["Dry","Damp","Damp","Wet","Wet","Reject","Wet","Wet","Damp","Damp",
+          "Dry","Wet","Damp","Dry","Damp","Damp","Dry","Wet","Dry","Damp",
+          "Reject","Damp","Wet","Damp","Wet"],
+  "BN2": ["Reject","Damp","Damp","Damp","Reject","Damp","Wet","Dry","Dry","Wet",
+          "Dry","Damp","Dry","Damp","Damp","Wet","Wet","Dry","Dry","Damp",
+          "Reject","Wet","Reject","Damp","Dry"],
+  "BN3": ["Reject","Dry","Wet","Wet","Reject","Wet","Dry","Wet","Reject","Damp",
+          "Damp","Damp","Wet","Dry","Wet","Wet","Wet","Wet","Wet","Wet",
+          "Wet","Wet","Wet","Wet","Wet"]
+}

@@ -12,7 +12,7 @@ unreachable, it falls back to CLIP zero-shot and says so in the UI.
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
+from typing import List
 
 import gradio as gr
 import pandas as pd
@@ -82,11 +82,14 @@ def analyse(files: List[str], weather_hint: str):
 with gr.Blocks(title="Weather Whiplash", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         "# 🏁 Weather Whiplash\n"
-        "### Live track condition detector - Dry / Damp / Drying / Wet\n"
+        "### Live track condition detector\n"
         f"{BACKEND_NOTE}\n\n"
-        "Upload a **sequence** of trackside frames (numbered in time order). A single "
+        "Upload a **sequence** of trackside frames, numbered in time order. A single "
         "frame gives a condition; a sequence is what lets the trend layer decide "
-        "whether the track is drying and when the tyre window opens."
+        "whether the track is drying and when the tyre window opens.\n\n"
+        "The classifier reads **Dry / Damp / Wet** from each frame. **Drying is not a "
+        "frame label** - a damp track and a drying track look identical in one image, "
+        "so it is derived from the direction of change across the sequence."
     )
 
     with gr.Row():

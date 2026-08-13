@@ -69,16 +69,16 @@ pulled 843 images with zero failures.
 
 ## What review found
 
-CLIP zero-shot triaged the pool into candidate buckets; 222 images were then
-checked by eye. **CLIP disagreed with human review on 48.6% of them.** Broken
+CLIP zero-shot triaged the pool into candidate buckets; 322 images were then
+checked by eye. **CLIP disagreed with human review on 47.8% of them.** Broken
 down by bucket, the failure is very uneven:
 
-| CLIP bucket | Roughly correct | What it actually contained |
-|---|---|---|
-| Wet | ~92% | genuinely wet track |
-| Dry | ~76% | dry track, plus portraits and paddock shots |
-| Damp | ~23% | mostly Wet, some Dry, several unusable |
-| **Drying** | **0 of 25** | aerial circuit maps and sunny Monaco streets |
+| CLIP bucket | n | Correct | What it actually contained |
+|---|---|---|---|
+| Wet | 110 | 76% | mostly right; 15 were damp, not wet |
+| Dry | 165 | 48% | 51 were actually damp, 32 unusable (portraits, paddock) |
+| Damp | 22 | 23% | mostly Wet, some Dry, several unusable |
+| **Drying** | 25 | **0%** | aerial circuit maps and sunny Monaco streets |
 
 The Drying result is the most important finding in the project. CLIP has no
 visual grounding for "a dry racing line on wet asphalt" and there is no prompt
@@ -90,14 +90,16 @@ rather than by hand, so the decision is reproducible and visible in the output.
 is where the brief itself says the real signal lives. The classifier answers
 "how wet is it now"; the trend layer answers "which way is it going".
 
-Damp needed a different approach too. It isn't in CLIP's Damp bucket, it's at
-the low-confidence boundary between Dry and Wet in wet-weekend imagery. A
-targeted pass over that band yielded Damp at roughly 35% per sheet, against 23%
-in the bucket named after it.
+Damp needed a different approach too, and the table above shows why: only 23% of
+CLIP's own "Damp" bucket was damp, while **51 damp tracks were sitting in the
+"Dry" bucket**. Damp lives at the low-confidence boundary between Dry and Wet in
+wet-weekend imagery, so the review tooling has a mode that samples exactly that
+band (`make_contactsheets --mode boundary`). It yields around 35% Damp per
+sheet, against 23% in the bucket named after it.
 
-Final dataset: **486 images across Dry / Damp / Wet**, with human-verified
-images allocated to test and validation first so the headline metric is measured
-against checked labels.
+Final dataset: **473 images across Dry / Damp / Wet** (159 / 76 / 238), with
+human-verified images allocated to test and validation first so the headline
+metric is measured against checked labels.
 
 ## Why "Drying" is a sequence problem
 
@@ -120,39 +122,53 @@ nothing. It shifts the median by zero. A test caught this and it's still there:
 `test_single_outlier_frame_does_not_trigger_a_trend`.
 
 This layer has no torch dependency, so it's tested against synthetic sequences
-in 31 tests that run in well under a second.
+in 23 tests that run in well under a second. 66 tests across the project.
 
 ## Results
 
 <!-- RESULTS -->
-Both models on the same 71-image hand-verified test split, same label space
-(`python -m training.evaluate`):
+Both models on the same 69-image hand-verified test split, same label space
+(`python -m training.evaluate`).
 
-| | Accuracy | Macro F1 | Damp F1 | Dry F1 | Wet F1 |
-|---|---|---|---|---|---|
-| CLIP zero-shot | 77.5% | 0.58 | **0.00** | 0.84 | 0.89 |
-| Fine-tuned ViT | **83.1%** | **0.73** | **0.43** | 0.87 | 0.88 |
+| | Accuracy | 95% CI | Macro F1 | Damp F1 | Dry F1 | Wet F1 |
+|---|---|---|---|---|---|---|
+| CLIP zero-shot | 75.4% | [64.0, 84.0] | 0.59 | **0.12** | 0.78 | 0.87 |
+| Fine-tuned ViT | 82.6% | [72.0, 89.8] | **0.77** | **0.57** | 0.81 | 0.91 |
 
-The accuracy gap is +5.6 points, but the headline number undersells it. The real
-difference is Damp:
+**The +7.2 point accuracy gap is not statistically significant, and we do not
+claim it.** A McNemar paired test over the same images gives p=0.267: 9 images
+the fine-tune gets right and CLIP misses, against 4 the other way. On 69 images
+that is within noise, and the two confidence intervals overlap. The evaluation
+script prints this verdict on every run so the number cannot quietly drift back
+into a slide.
+
+The result that does hold up is per-class:
+
+| Class | CLIP recall | Fine-tuned recall | n | McNemar p |
+|---|---|---|---|---|
+| **Damp** | **0.09** | **0.55** | 11 | 0.062 |
+| Dry | 0.87 | 0.83 | 23 | 1.000 |
+| Wet | 0.89 | 0.91 | 35 | 1.000 |
 
 ```
 CLIP zero-shot                    Fine-tuned ViT
         Damp  Dry  Wet                    Damp  Dry  Wet
-Damp       0    4    2            Damp       3    0    3
-Dry        4   24    1            Dry        3   24    2
-Wet        5    0   31            Wet        2    2   32
+Damp       1    8    2            Damp       6    3    2
+Dry        2   20    1            Dry        3   19    1
+Wet        2    2   31            Wet        1    2   32
 ```
 
-CLIP gets **0 of 6** damp tracks right. It has no usable concept of the state
-between dry and wet, so it splits them between the two extremes and scores a
-respectable-looking 77.5% while being useless for the decision the tool exists
-to support: damp is the condition where a team is on intermediates and has to
-choose whether to stay. The fine-tune gets 3 of 6, on 34 training examples.
+CLIP finds **1 of 11** damp tracks. The fine-tune finds 6. CLIP has no usable
+representation of the state between dry and wet, so it scatters damp tracks to
+the two extremes and still scores a respectable-looking 75% overall by getting
+the easy classes right. Damp is the condition where a team is on intermediates
+deciding whether to stay out, so a model that cannot see it is not useful for
+the decision this tool exists to support, whatever its headline accuracy.
 
-Damp is still the weakest class, and with 6 test images the interval around 0.43
-is wide. It is honest to say it went from broken to working, not from working to
-good.
+At p=0.062 that per-class result is borderline rather than proven: a large
+effect measured on 11 images. The honest reading is that the fine-tune learned
+something CLIP does not have, and the test set is too small to nail it down.
+More Damp labels would settle it, and that is the top item in `improvement.md`.
 <!-- /RESULTS -->
 
 The CLIP fallback stays in the code as a real, swappable path
@@ -161,10 +177,11 @@ weights are missing.
 
 ## Limitations
 
-- **Damp is data-starved.** 41 verified examples against 77 Dry and 64 Wet.
-  Photographers shoot dramatic conditions, and a merely damp track isn't
-  dramatic. Training uses class weighting to compensate, but Damp is the weakest
-  class and its per-class numbers should be read with that in mind.
+- **Damp is still the thinnest class.** 71 verified examples against 102 Dry and
+  96 Wet, and 11 in the test split. Photographers shoot dramatic conditions, and
+  a merely damp track isn't dramatic. Training uses class weighting to
+  compensate, but every Damp figure carries a wide interval: one image moves
+  recall by 0.09.
 - **Photographs, not video.** Commons images are composed shots. A fixed
   trackside camera has a different distribution, and the trend layer is tuned
   for roughly 1 fps.
@@ -183,16 +200,23 @@ weights are missing.
 | Not from-scratch | fine-tune of `google/vit-base-patch16-224-in21k` |
 | Uses the HF Hub | backbone, CLIP fallback, plus our dataset, model and Space |
 | Label per image | `POST /api/predict` |
+| Photos **or video frames** | live camera, mp4 upload, or stills, all one path |
 | Trend graph | canvas sparkline of wetness over the rolling window |
 | Suggestion message | `app/recommend.py` |
-| Optional weather input | `weather_hint`, appended, never overrides the camera |
+| Optional weather input | `weather_hint`: raises the alert one step when a rain forecast contradicts the camera, never overrides it |
 
 ## Demo
 
-1. `make serve`, open the page.
-2. **Load demo sequence** for a bundled wet to dry transition.
-3. Watch the badge move Wet to Damp, the chart fall, and the call escalate from
-   hold to "tyre change window approaching".
-4. The header chip names which backend is live.
-5. Restart with `WW_FORCE_CLIP=1` to run the same sequence through zero-shot.
-   The difference is the argument for fine-tuning.
+1. `make serve PORT=8010`, open the page.
+2. **Load demo sequence** for a bundled wet to dry transition. Watch the badge
+   move Wet to Damp, the chart fall, and the call escalate from hold to
+   "tyre change window approaching".
+3. **Live camera**: point it at a screen playing race footage. A frame is
+   sampled every 1.2s, so the trend moves in about fifteen seconds of video.
+4. Or drop in an mp4, which is decoded and sampled across the whole clip.
+5. Type "rain in 10 minutes" in the weather box on a dry track and the alert
+   level rises one step. The camera still decides the condition and the tyre.
+6. The header chip names which backend is live, and the chart legend marks
+   Drying as coming "from trend" rather than from the classifier.
+7. Restart with `WW_FORCE_CLIP=1` to run the same sequence through zero-shot.
+   Watch it miss the damp frames.

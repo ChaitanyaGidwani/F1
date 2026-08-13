@@ -1,15 +1,26 @@
 """Render numbered contact sheets so the CLIP triage can be checked by eye.
 
-Reviewing ~2000 images one at a time is not practical; reviewing 25 at a time on
-a labelled grid is. Each cell carries a short id, and the sheet ships with a
-sidecar JSON mapping cell id -> sha1, so corrections can be written back as
+Reviewing thousands of images one at a time is not practical; reviewing 25 at a
+time on a labelled grid is. Each cell carries a short id, and the sheet ships
+with a sidecar JSON mapping cell id -> sha1, so corrections are written back as
 
     data/review/corrections.json   {"<sha1>": "Wet" | "Dry" | ... | "Reject"}
 
-Anything without a correction keeps its CLIP label; corrections override it.
+Anything without an entry keeps its CLIP label; entries override it.
+
+Two selection modes:
+
+`buckets` (default) walks CLIP's own class buckets, most confident first. Good
+for a first pass, since the confident images define each class.
+
+`boundary` samples the *least* confident Dry and Wet calls from wet-weekend
+imagery. This is where Damp actually lives: measured yield is around 35% Damp
+per sheet, against 23% in the bucket CLIP itself labels "Damp". Already-decided
+images are skipped, so repeated runs keep reaching new candidates.
 
 Usage:
-    python -m data_pipeline.make_contactsheets --per-sheet 25
+    python -m data_pipeline.make_contactsheets
+    python -m data_pipeline.make_contactsheets --mode boundary --sheets 4
 """
 
 from __future__ import annotations
@@ -17,7 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from PIL import Image, ImageDraw
 
@@ -39,21 +50,19 @@ CELL = 224
 CAPTION = 22
 COLS = 5
 
+Sheet = Tuple[str, List[dict], str]  # (name, records, cell-id prefix)
+
 
 def build_sheet(records: List[dict], out_path: Path, index_map: Dict[str, str]) -> None:
     rows = (len(records) + COLS - 1) // COLS
-    width = COLS * CELL
-    height = rows * (CELL + CAPTION)
-    sheet = Image.new("RGB", (width, height), (18, 18, 22))
+    sheet = Image.new("RGB", (COLS * CELL, rows * (CELL + CAPTION)), (18, 18, 22))
     draw = ImageDraw.Draw(sheet)
 
     for i, rec in enumerate(records):
-        col, row = i % COLS, i // COLS
-        x, y = col * CELL, row * (CELL + CAPTION)
+        x, y = (i % COLS) * CELL, (i // COLS) * (CELL + CAPTION)
         try:
             img = Image.open(ROOT / rec["path"]).convert("RGB")
-            img = img.resize((CELL, CELL), Image.BILINEAR)
-            sheet.paste(img, (x, y))
+            sheet.paste(img.resize((CELL, CELL), Image.BILINEAR), (x, y))
         except Exception:  # noqa: BLE001
             draw.rectangle([x, y, x + CELL, y + CELL], fill=(60, 20, 20))
 
@@ -62,52 +71,87 @@ def build_sheet(records: List[dict], out_path: Path, index_map: Dict[str, str]) 
         caption = f"{cell_id}  {rec['clip_label'][:7]} {rec['clip_confidence']:.2f}"
         draw.rectangle([x, y + CELL, x + CELL, y + CELL + CAPTION], fill=(10, 10, 12))
         draw.text((x + 4, y + CELL + 5), caption, fill=(235, 235, 240))
-        # id badge on the image itself, so a cell is identifiable when cropped
-        draw.rectangle([x + 2, y + 2, x + 46, y + 20], fill=(0, 0, 0))
+        # id badge on the image itself, so a cell stays identifiable when cropped
+        draw.rectangle([x + 2, y + 2, x + 52, y + 20], fill=(0, 0, 0))
         draw.text((x + 6, y + 6), cell_id, fill=(255, 220, 90))
 
     sheet.save(out_path, quality=88)
 
 
+def select_buckets(records: List[dict], per_sheet: int, max_sheets: int) -> List[Sheet]:
+    by_class: Dict[str, List[dict]] = {c: [] for c in CLASSES + [REJECT]}
+    for rec in records:
+        by_class.setdefault(rec["clip_label"], []).append(rec)
+
+    sheets: List[Sheet] = []
+    for cls, items in by_class.items():
+        # Most confident first: those define the class, so errors there hurt most.
+        items.sort(key=lambda r: -r["clip_confidence"])
+        prefix = PREFIXES.get(cls, cls[:3].upper())
+        n = min(max_sheets, (len(items) + per_sheet - 1) // per_sheet)
+        for i in range(n):
+            chunk = items[i * per_sheet : (i + 1) * per_sheet]
+            if chunk:
+                sheets.append((f"{cls}_{i}", chunk, f"{prefix}{i}"))
+    return sheets
+
+
+def select_boundary(
+    records: List[dict], decided: set, per_sheet: int, sheets_wanted: int
+) -> List[Sheet]:
+    cand = [
+        r for r in records
+        if r["sha1"] not in decided
+        and r.get("hint") == "mixed"
+        and r["clip_label"] in ("Wet", "Dry")
+    ]
+    cand.sort(key=lambda r: r["clip_confidence"])
+    sheets: List[Sheet] = []
+    for i in range(sheets_wanted):
+        chunk = cand[i * per_sheet : (i + 1) * per_sheet]
+        if not chunk:
+            break
+        sheets.append((f"boundary_{i}", chunk, f"BN{i}"))
+    return sheets
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=["buckets", "boundary"], default="buckets")
     parser.add_argument("--per-sheet", type=int, default=25)
     parser.add_argument("--max-sheets-per-class", type=int, default=8)
+    parser.add_argument("--sheets", type=int, default=4, help="boundary mode only")
     args = parser.parse_args()
 
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     records = [json.loads(l) for l in PRESORT.read_text().splitlines() if l.strip()]
 
-    by_class: Dict[str, List[dict]] = {c: [] for c in CLASSES + [REJECT]}
-    for rec in records:
-        by_class.setdefault(rec["clip_label"], []).append(rec)
+    corrections_path = REVIEW_DIR / "corrections.json"
+    decided = set(json.loads(corrections_path.read_text() or "{}")) if corrections_path.exists() else set()
 
-    # Review the most confident first: those set the class definition, and errors
-    # among them are the most damaging.
+    if args.mode == "boundary":
+        plan = select_boundary(records, decided, args.per_sheet, args.sheets)
+    else:
+        plan = select_buckets(records, args.per_sheet, args.max_sheets_per_class)
+
     index_map: Dict[str, str] = {}
     manifest = []
-    for cls, items in by_class.items():
-        items.sort(key=lambda r: -r["clip_confidence"])
-        prefix = PREFIXES.get(cls, cls[:3].upper())
-        for sheet_no in range(min(args.max_sheets_per_class,
-                                  (len(items) + args.per_sheet - 1) // args.per_sheet)):
-            chunk = items[sheet_no * args.per_sheet : (sheet_no + 1) * args.per_sheet]
-            if not chunk:
-                break
-            for j, rec in enumerate(chunk):
-                rec["cell_id"] = f"{prefix}{sheet_no}{j:02d}"
-            out = REVIEW_DIR / f"sheet_{cls}_{sheet_no}.jpg"
-            build_sheet(chunk, out, index_map)
-            manifest.append({"sheet": out.name, "clip_label": cls, "count": len(chunk)})
-            print(f"  {out.name}  ({len(chunk)} cells)")
+    for name, chunk, prefix in plan:
+        for j, rec in enumerate(chunk):
+            rec["cell_id"] = f"{prefix}{j:02d}"
+        out = REVIEW_DIR / f"sheet_{name}.jpg"
+        build_sheet(chunk, out, index_map)
+        manifest.append({"sheet": out.name, "count": len(chunk), "prefix": prefix})
+        print(f"  {out.name}  ({len(chunk)} cells, ids {prefix}00-{prefix}{len(chunk)-1:02d})")
 
     (REVIEW_DIR / "index_map.json").write_text(json.dumps(index_map, indent=2))
     (REVIEW_DIR / "sheets.json").write_text(json.dumps(manifest, indent=2))
-    corrections = REVIEW_DIR / "corrections.json"
-    if not corrections.exists():
-        corrections.write_text("{}\n")
-    print(f"\n{len(manifest)} sheets -> {REVIEW_DIR}")
-    print(f"cell ids -> {REVIEW_DIR / 'index_map.json'}")
+    if not corrections_path.exists():
+        corrections_path.write_text("{}\n")
+
+    print(f"\n{len(plan)} sheets -> {REVIEW_DIR}")
+    print(f"{len(index_map)} cells; already-decided images were skipped"
+          if args.mode == "boundary" else f"{len(index_map)} cells")
 
 
 if __name__ == "__main__":

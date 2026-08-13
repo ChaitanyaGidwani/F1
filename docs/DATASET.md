@@ -65,17 +65,39 @@ python -m data_pipeline.make_contactsheets
 Renders 5×5 numbered grids into `data/review/`, most-confident first - those set
 the class definition, so errors among them do the most damage.
 
-Record corrections in `data/review/corrections.json`:
+Write your verdicts against the cell ids printed on each sheet, either one at a
+time or a whole sheet in reading order:
 
 ```json
 {
-  "a1b2c3...": "Damp",
-  "d4e5f6...": "Reject"
+  "BN0": ["Dry", "Reject", "Damp", "Dry", "Wet"],
+  "DMP012": "Wet"
 }
 ```
 
-Keys are sha1s; `data/review/index_map.json` maps each visible cell id
-(e.g. `WE003`) to its sha1. Anything without a correction keeps its CLIP label.
+Then merge them into the label store:
+
+```bash
+python -m data_pipeline.apply_review my_verdicts.json
+```
+
+That resolves cell ids to image hashes through `data/review/index_map.json` and
+writes `data/review/corrections.json`, which is the durable record. Record
+agreements as well as changes: "a human looked at this and agreed" is what makes
+an image eligible for the test split.
+
+### Finding Damp
+
+Damp is not in CLIP's Damp bucket. It sits at the low-confidence boundary
+between Dry and Wet in wet-weekend imagery, so there is a mode for it:
+
+```bash
+python -m data_pipeline.make_contactsheets --mode boundary --sheets 4
+```
+
+Measured yield is around 35% Damp per sheet against 23% in the bucket CLIP
+itself labels "Damp". Already-decided images are skipped, so repeated runs keep
+reaching new candidates.
 
 **Why this stage is not optional.** If CLIP's guesses became ground truth, the
 fine-tune would distil CLIP and the accuracy number would be circular. Human

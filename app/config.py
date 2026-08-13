@@ -37,7 +37,22 @@ class Settings:
     ema_alpha: float = float(_env("WW_EMA_ALPHA", "0.4"))
 
     max_upload_bytes: int = int(_env("WW_MAX_UPLOAD_BYTES", str(12 * 1024 * 1024)))
+    max_video_bytes: int = int(_env("WW_MAX_VIDEO_BYTES", str(64 * 1024 * 1024)))
     max_sessions: int = int(_env("WW_MAX_SESSIONS", "64"))
+    #: Ceiling on frames analysed per request. Without it, one upload of a few
+    #: hundred frames occupies a worker for the length of the demo.
+    max_frames: int = int(_env("WW_MAX_FRAMES", "60"))
+    #: Frames sampled from an uploaded video, spread across the whole clip.
+    video_max_frames: int = int(_env("WW_VIDEO_MAX_FRAMES", "36"))
+
+    #: Comma-separated allowed origins. Empty by default: the backend serves the
+    #: frontend itself, so the demo is same-origin and needs no CORS at all.
+    #: Set this only when a browser app on another origin has to call the API.
+    cors_origins: str = _env("WW_CORS_ORIGINS", "")
+
+    @property
+    def cors_origin_list(self) -> list:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 settings = Settings()

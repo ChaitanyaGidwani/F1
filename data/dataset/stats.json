@@ -1,5 +1,5 @@
 {
-  "total_images": 486,
+  "total_images": 473,
   "classes": [
     "Dry",
     "Damp",
@@ -10,37 +10,37 @@
   ],
   "counts": {
     "train": {
-      "Dry": 141,
-      "Damp": 34,
-      "Wet": 169
+      "Dry": 113,
+      "Damp": 54,
+      "Wet": 168
     },
     "validation": {
-      "Dry": 29,
-      "Damp": 6,
-      "Wet": 36
+      "Dry": 23,
+      "Damp": 11,
+      "Wet": 35
     },
     "test": {
-      "Dry": 29,
-      "Damp": 6,
-      "Wet": 36
+      "Dry": 23,
+      "Damp": 11,
+      "Wet": 35
     }
   },
-  "reviewed_images": 222,
-  "clip_wrong_on_reviewed": 108,
-  "clip_disagreement_rate": 0.4865,
+  "reviewed_images": 322,
+  "clip_wrong_on_reviewed": 154,
+  "clip_disagreement_rate": 0.4783,
   "skipped_low_confidence": 98,
   "min_confidence": 0.55,
   "license_breakdown": {
-    "CC0": 53,
-    "CC BY-SA 3.0": 51,
-    "CC BY 2.0": 179,
-    "CC BY-SA 2.0": 157,
+    "CC BY 2.0": 178,
     "CC BY-SA 3.0 nl": 10,
+    "CC0": 47,
+    "CC BY-SA 2.0": 152,
+    "CC BY-SA 3.0": 50,
     "CC BY-SA 4.0": 25,
-    "CC BY 4.0": 4,
-    "Public domain": 2,
     "CC BY-SA 2.0 de": 2,
+    "CC BY-SA 3.0 de": 1,
+    "CC BY 4.0": 4,
     "CC BY 3.0": 2,
-    "CC BY-SA 3.0 de": 1
+    "Public domain": 2
   }
 }

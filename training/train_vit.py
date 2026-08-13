@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List
 
 import numpy as np
 import torch
@@ -35,7 +34,6 @@ from torchvision.transforms import (
     RandomResizedCrop,
     RandomRotation,
     Resize,
-    CenterCrop,
     ToTensor,
 )
 import torch.nn.functional as F
@@ -46,7 +44,6 @@ from transformers import (
     TrainingArguments,
 )
 
-from app.labels import CLASSES
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "dataset"
@@ -91,7 +88,9 @@ def build_transforms(processor):
 
     train_tf = Compose(
         [
-            RandomResizedCrop(size, scale=(0.65, 1.0), ratio=(0.8, 1.25)),
+            # Aspect ratio is left wide so crops stay closer to the squashed
+            # full frame the model sees at inference time.
+            RandomResizedCrop(size, scale=(0.65, 1.0), ratio=(0.75, 1.4)),
             RandomHorizontalFlip(),
             RandomRotation(7),
             # Mild only: see module docstring.
@@ -100,7 +99,12 @@ def build_transforms(processor):
             normalize,
         ]
     )
-    eval_tf = Compose([Resize(size), CenterCrop(size), ToTensor(), normalize])
+    # Match what the deployed `pipeline` does: ViTImageProcessor resizes the
+    # whole image to size x size. Resize-shortest-side plus CenterCrop would
+    # throw away the left and right of a wide trackside shot, so eval here would
+    # measure a preprocessing that never runs in production - and, because the
+    # best checkpoint is chosen on this metric, would select for the wrong thing.
+    eval_tf = Compose([Resize((size, size)), ToTensor(), normalize])
     return train_tf, eval_tf
 
 

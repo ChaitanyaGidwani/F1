@@ -14,16 +14,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Dict, List
 
 import torch
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from PIL import Image
 
 from app.clip_prompts import CLASS_PROMPTS
-from app.labels import CLASSES, canonical
+from app.labels import canonical
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data" / "dataset"
@@ -36,6 +36,39 @@ def device() -> str:
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
+
+
+def wilson_interval(correct: int, n: int, z: float = 1.96):
+    """95% confidence interval for an accuracy, Wilson score method.
+
+    Quoting a bare accuracy on a test set this small invites a reader to believe
+    it to three decimal places. The interval is the honest number.
+    """
+    if not n:
+        return 0.0, 0.0
+    p = correct / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return centre - half, centre + half
+
+
+def mcnemar(y_true: List[int], a_pred: List[int], b_pred: List[int]):
+    """Exact McNemar test on two models scored over the *same* items.
+
+    Comparing two independent accuracy figures ignores that both models saw the
+    same images, which is the information that makes a small test set usable.
+    Only the disagreements carry signal: cases both got right or both got wrong
+    tell you nothing about which is better.
+    """
+    only_a = sum(1 for t, a, b in zip(y_true, a_pred, b_pred) if a == t and b != t)
+    only_b = sum(1 for t, a, b in zip(y_true, a_pred, b_pred) if a != t and b == t)
+    n = only_a + only_b
+    if n == 0:
+        return only_a, only_b, 1.0
+    tail = sum(math.comb(n, k) for k in range(min(only_a, only_b) + 1))
+    p = min(1.0, 2 * tail / (2**n))
+    return only_a, only_b, p
 
 
 def print_confusion(y_true: List[int], y_pred: List[int], names: List[str], title: str) -> None:
@@ -146,11 +179,62 @@ def main() -> None:
             ),
         }
 
+        n = len(y_true)
+        clip_lo, clip_hi = wilson_interval(round(clip_acc * n), n)
+        ft_lo, ft_hi = wilson_interval(round(ft_acc * n), n)
+        only_ft, only_clip, p_value = mcnemar(y_true, ft_pred, clip_pred)
+
         print("\n" + "=" * 62)
-        print(f"  CLIP zero-shot : {clip_acc:.1%}")
-        print(f"  Fine-tuned ViT : {ft_acc:.1%}")
-        print(f"  Improvement    : {ft_acc - clip_acc:+.1%}")
+        print(f"  CLIP zero-shot : {clip_acc:.1%}  95% CI [{clip_lo:.1%}, {clip_hi:.1%}]")
+        print(f"  Fine-tuned ViT : {ft_acc:.1%}  95% CI [{ft_lo:.1%}, {ft_hi:.1%}]")
+        print(f"  Difference     : {ft_acc - clip_acc:+.1%} on n={n}")
+        print("-" * 62)
+        print("  McNemar paired test (same images, disagreements only)")
+        print(f"    ViT right, CLIP wrong : {only_ft}")
+        print(f"    CLIP right, ViT wrong : {only_clip}")
+        print(f"    exact two-sided p     : {p_value:.3f}")
+        verdict = ("significant at 0.05" if p_value < 0.05
+                   else "NOT significant - do not claim an overall accuracy win")
+        print(f"    verdict               : {verdict}")
+        print("-" * 62)
+
+        # Per-class recall is where the two models actually differ, and it does
+        # not depend on the overall accuracy gap being significant. Each class
+        # gets its own paired test, because "the model finds damp tracks and the
+        # baseline does not" is the claim worth defending.
+        results["per_class_significance"] = {}
+        for cls in names:
+            idx = names.index(cls)
+            rows = [i for i, t in enumerate(y_true) if t == idx]
+            c_rec = results["clip"]["report"][cls]["recall"]
+            f_rec = results["finetuned"]["report"][cls]["recall"]
+            cls_ft, cls_clip, cls_p = mcnemar(
+                [y_true[i] for i in rows],
+                [ft_pred[i] for i in rows],
+                [clip_pred[i] for i in rows],
+            )
+            mark = "*" if cls_p < 0.05 else " "
+            print(f"  {cls:6s} recall  CLIP {c_rec:.2f} -> fine-tuned {f_rec:.2f} "
+                  f" (n={len(rows):2d}, McNemar p={cls_p:.3f}){mark}")
+            results["per_class_significance"][cls] = {
+                "n": len(rows),
+                "clip_recall": c_rec,
+                "finetuned_recall": f_rec,
+                "mcnemar_p": cls_p,
+                "significant_at_05": bool(cls_p < 0.05),
+            }
+        print("  (* = significant at 0.05)")
         print("=" * 62)
+
+        results["significance"] = {
+            "n": n,
+            "clip_ci": [clip_lo, clip_hi],
+            "finetuned_ci": [ft_lo, ft_hi],
+            "mcnemar_only_finetuned": only_ft,
+            "mcnemar_only_clip": only_clip,
+            "mcnemar_p": p_value,
+            "significant_at_05": bool(p_value < 0.05),
+        }
 
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
         (MODEL_DIR / "comparison.json").write_text(json.dumps(results, indent=2, default=float))

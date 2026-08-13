@@ -1,8 +1,17 @@
 # Weather Whiplash
 
-Track conditions change faster than weather reports. This reads frames from a
-trackside or onboard camera, classifies the racing surface, tracks whether
-things are getting better or worse, and turns that into a tyre call.
+Track conditions change faster than weather reports. This reads a live camera, a
+video, or a folder of frames from a trackside or onboard view, classifies the
+racing surface, tracks whether things are getting better or worse, and turns
+that into a tyre call.
+
+It reports four states — **Dry, Damp, Drying, Wet** — from two different places.
+Three are what a classifier can see in one frame. **Drying is not**: a damp
+track and a drying track are pixel-identical in a still image, and only the
+direction of travel across a sequence separates them. So the model answers "how
+wet is it now" and a separate, model-free trend layer answers "which way is it
+going". That split is the whole design, and it is explained in full under
+[Classes](#classes).
 
 Built for the Grand Prix hackathon (AI in Racing Strategy & Decision-Making,
 problem statement 2).
@@ -14,9 +23,17 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn app.main:app --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. Drop in some track frames: one image classifies a
-single frame, several images replay as a sequence so the trend can move. There's
-a **Load demo sequence** button with a bundled wet-to-dry transition.
+Open <http://127.0.0.1:8000>. Three ways in:
+
+- **Live camera** samples a frame every 1.2s straight into the trend buffer.
+  Point a laptop at a screen playing race footage and the chart moves in real
+  time.
+- **A video** is decoded server-side and sampled across the whole clip, so an
+  mp4 and a folder of stills take the same path.
+- **Images**: one classifies a single frame, several replay as a sequence.
+
+**Load demo sequence** plays a bundled wet-to-dry transition if you have no
+footage to hand.
 
 The backend serves the frontend, so that's the whole setup. No build step, no
 CDN, one port. If the fine-tuned weights are missing it falls back to CLIP
@@ -85,8 +102,9 @@ needs a fine-tune rather than an API call. Full reasoning in
   the Hub, which would break the deliverable.
 
 Labels come from CLIP triage corrected by human review. CLIP disagreed with the
-reviewer on 48.6% of 222 checked images. Verified images go to the test and
-validation splits first, so accuracy is measured against checked labels.
+reviewer on 47.8% of 322 checked images, and 51 damp tracks were sitting in its
+"Dry" bucket. Verified images go to the test and validation splits first, so
+accuracy is measured against checked labels.
 
 Rebuilding it:
 
@@ -138,7 +156,7 @@ whenever a paid plan or another host is on the table. See
 |---|---|---|
 | `GET`  | `/api/health` | backend, device, model id, class list |
 | `POST` | `/api/predict` | one frame, folded into the session trend |
-| `POST` | `/api/sequence` | N ordered frames, per-frame trace plus verdict |
+| `POST` | `/api/sequence` | N ordered frames **or a video**, per-frame trace plus verdict |
 | `POST` | `/api/session/reset` | clear a session's buffer |
 | `GET`  | `/api/demo-sequence` | bundled wet to dry frames |
 

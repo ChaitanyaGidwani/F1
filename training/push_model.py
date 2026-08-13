@@ -99,6 +99,45 @@ def eval_section() -> str:
                 )
     lines += ["", "The test split is hand-verified, so these numbers are measured "
               "against human labels rather than triage output."]
+
+    # Publish the significance verdict alongside the numbers. A model card that
+    # quotes an accuracy gap without saying whether it survives a paired test is
+    # the same overclaim, just on a public page.
+    comparison = MODEL_DIR / "comparison.json"
+    if comparison.exists():
+        c = json.loads(comparison.read_text())
+        sig = c.get("significance") or {}
+        clip_acc = (c.get("clip") or {}).get("accuracy")
+        ft_acc = (c.get("finetuned") or {}).get("accuracy")
+        if clip_acc is not None and ft_acc is not None:
+            lines += [
+                "", "### Against the CLIP zero-shot baseline", "",
+                f"Same {c.get('n')} hand-verified test images, same label space.", "",
+                "| | Accuracy | Macro F1 |", "|---|---|---|",
+                f"| CLIP zero-shot | {clip_acc:.1%} | "
+                f"{c['clip']['report']['macro avg']['f1-score']:.2f} |",
+                f"| This model | {ft_acc:.1%} | "
+                f"{c['finetuned']['report']['macro avg']['f1-score']:.2f} |",
+            ]
+        if sig:
+            verdict = ("statistically significant"
+                       if sig.get("significant_at_05")
+                       else "**not** statistically significant, and is not claimed")
+            lines += [
+                "",
+                f"A McNemar paired test over the same images gives p="
+                f"{sig.get('mcnemar_p', float('nan')):.3f}, so the overall accuracy "
+                f"difference is {verdict}.",
+            ]
+        per_class = c.get("per_class_significance") or {}
+        if per_class:
+            lines += ["", "Per-class recall, which is where the models actually differ:",
+                      "", "| Class | CLIP | This model | n | p |", "|---|---|---|---|---|"]
+            for cls, v in per_class.items():
+                lines.append(
+                    f"| {cls} | {v['clip_recall']:.2f} | {v['finetuned_recall']:.2f} "
+                    f"| {v['n']} | {v['mcnemar_p']:.3f} |"
+                )
     return "\n".join(lines)
 
 

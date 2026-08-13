@@ -1,102 +1,22 @@
 [
   {
-    "sheet": "sheet_Dry_0.jpg",
-    "clip_label": "Dry",
-    "count": 25
+    "sheet": "sheet_boundary_0.jpg",
+    "count": 25,
+    "prefix": "BN0"
   },
   {
-    "sheet": "sheet_Dry_1.jpg",
-    "clip_label": "Dry",
-    "count": 25
+    "sheet": "sheet_boundary_1.jpg",
+    "count": 25,
+    "prefix": "BN1"
   },
   {
-    "sheet": "sheet_Dry_2.jpg",
-    "clip_label": "Dry",
-    "count": 25
+    "sheet": "sheet_boundary_2.jpg",
+    "count": 25,
+    "prefix": "BN2"
   },
   {
-    "sheet": "sheet_Dry_3.jpg",
-    "clip_label": "Dry",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Dry_4.jpg",
-    "clip_label": "Dry",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Damp_0.jpg",
-    "clip_label": "Damp",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Damp_1.jpg",
-    "clip_label": "Damp",
-    "count": 15
-  },
-  {
-    "sheet": "sheet_Drying_0.jpg",
-    "clip_label": "Drying",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Drying_1.jpg",
-    "clip_label": "Drying",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Drying_2.jpg",
-    "clip_label": "Drying",
-    "count": 11
-  },
-  {
-    "sheet": "sheet_Wet_0.jpg",
-    "clip_label": "Wet",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Wet_1.jpg",
-    "clip_label": "Wet",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Wet_2.jpg",
-    "clip_label": "Wet",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Wet_3.jpg",
-    "clip_label": "Wet",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Wet_4.jpg",
-    "clip_label": "Wet",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Reject_0.jpg",
-    "clip_label": "Reject",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Reject_1.jpg",
-    "clip_label": "Reject",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Reject_2.jpg",
-    "clip_label": "Reject",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Reject_3.jpg",
-    "clip_label": "Reject",
-    "count": 25
-  },
-  {
-    "sheet": "sheet_Reject_4.jpg",
-    "clip_label": "Reject",
-    "count": 25
+    "sheet": "sheet_boundary_3.jpg",
+    "count": 25,
+    "prefix": "BN3"
   }
 ]

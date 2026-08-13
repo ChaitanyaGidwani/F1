@@ -24,7 +24,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List
 
-from app.labels import CLASS_DAMP, CLASS_DRY, CLASS_DRYING, CLASS_WET, canonical
+from app.labels import CLASS_DAMP, CLASS_DRY, CLASS_WET, canonical
 
 ROOT = Path(__file__).resolve().parents[1]
 PRESORT = ROOT / "data" / "raw" / "presort.jsonl"

@@ -24,6 +24,9 @@ async function loadHealth() {
     const h = await res.json();
     if (h.class_colors) state.colors = h.class_colors;
     if (h.classes) state.classes = h.classes;
+    // What the classifier can emit, which is a subset of what the system
+    // reports. Drying is derived by the trend layer, and the legend says so.
+    state.modelClasses = h.model_classes || null;
     if (h.wetness_scale) state.wetness = h.wetness_scale;
     if (h.window) state.window = h.window;
 
@@ -83,6 +86,11 @@ async function send(files) {
   }
 }
 
+// A live session runs indefinitely, so the filmstrip is capped and the object
+// URLs of dropped frames are revoked. Without this a few minutes of capture
+// holds every frame it ever saw in memory.
+const MAX_STEPS = 40;
+
 function pushStep(url, data) {
   state.steps.push({
     url,
@@ -90,6 +98,10 @@ function pushStep(url, data) {
     trend: data.trend,
     recommendation: data.recommendation,
   });
+  while (state.steps.length > MAX_STEPS) {
+    const dropped = state.steps.shift();
+    URL.revokeObjectURL(dropped.url);
+  }
   renderFilmstrip();
   show(state.steps.length - 1);
   $("replay").disabled = state.steps.length < 2;
@@ -103,9 +115,13 @@ function show(index) {
   state.cursor = index;
 
   $("empty").hidden = true;
+  // While the camera is running it stays on screen and the readout updates
+  // around it; swapping in the captured still would make the feed look frozen.
   const img = $("frame");
-  img.src = step.url;
-  img.hidden = false;
+  if (!live.stream) {
+    img.src = step.url;
+    img.hidden = false;
+  }
 
   const trend = step.trend;
   const rec = step.recommendation;
@@ -185,7 +201,13 @@ function renderProbs(probs) {
 
 function renderLegend() {
   $("legend").innerHTML = state.classes
-    .map((c) => `<span><i style="background:${state.colors[c]}"></i>${c}</span>`)
+    .map((c) => {
+      const derived = state.modelClasses && !state.modelClasses.includes(c);
+      const note = derived
+        ? ` <em class="derived" title="A single frame cannot show drying. This state comes from the direction of change across the window.">from trend</em>`
+        : "";
+      return `<span><i style="background:${state.colors[c]}"></i>${c}${note}</span>`;
+    })
     .join("");
 }
 
@@ -285,6 +307,100 @@ function stop() {
   state.playing = null;
 }
 
+/* ---------------------------------------------------------------- live */
+
+const live = { stream: null, timer: null, busy: false, canvas: null };
+
+async function toggleLive() {
+  if (live.stream) return stopLive();
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return toast("This browser has no camera API");
+  }
+  try {
+    live.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 } },
+      audio: false,
+    });
+  } catch (err) {
+    return toast(err.name === "NotAllowedError"
+      ? "Camera permission denied"
+      : `Camera unavailable: ${err.message}`);
+  }
+
+  stop();                       // any replay in progress
+  const cam = $("cam");
+  cam.srcObject = live.stream;
+  cam.hidden = false;
+  await cam.play().catch(() => {});
+  $("frame").hidden = true;
+  $("empty").hidden = true;
+  $("liveDot").hidden = false;
+  ["live", "live2"].forEach((id) => {
+    const el = $(id);
+    if (el) { el.textContent = "Stop camera"; el.classList.add("recording"); }
+  });
+
+  live.canvas = document.createElement("canvas");
+  // One frame per 1.2s. The trend window is 12 frames, so a change in
+  // conditions shows up in roughly 15 seconds of footage.
+  live.timer = setInterval(captureFrame, 1200);
+  captureFrame();
+}
+
+function stopLive() {
+  clearInterval(live.timer);
+  live.timer = null;
+  live.stream?.getTracks().forEach((t) => t.stop());
+  live.stream = null;
+
+  const cam = $("cam");
+  cam.srcObject = null;
+  cam.hidden = true;
+  $("liveDot").hidden = true;
+  if (state.steps.length) $("frame").hidden = false;
+  else $("empty").hidden = false;
+  ["live", "live2"].forEach((id) => {
+    const el = $(id);
+    if (el) { el.textContent = "Live camera"; el.classList.remove("recording"); }
+  });
+}
+
+async function captureFrame() {
+  // Skip rather than queue: on a slow device the requests would pile up and
+  // the trend would fall behind what the camera is actually seeing.
+  if (!live.stream || live.busy) return;
+  const cam = $("cam");
+  if (!cam.videoWidth) return;
+
+  live.busy = true;
+  try {
+    live.canvas.width = cam.videoWidth;
+    live.canvas.height = cam.videoHeight;
+    live.canvas.getContext("2d").drawImage(cam, 0, 0);
+    const blob = await new Promise((res) =>
+      live.canvas.toBlob(res, "image/jpeg", 0.85));
+    if (!blob) return;
+
+    const fd = new FormData();
+    fd.append("file", blob, `live-${Date.now()}.jpg`);
+    fd.append("session_id", state.sessionId);
+    const hint = $("weather").value.trim();
+    if (hint) fd.append("weather_hint", hint);
+
+    const res = await fetch("/api/predict", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Request failed");
+
+    pushStep(URL.createObjectURL(blob), data);
+  } catch (err) {
+    toast(err.message || "Live capture failed");
+    stopLive();
+  } finally {
+    live.busy = false;
+  }
+}
+
 /* ---------------------------------------------------------------- demo */
 
 async function loadDemo() {
@@ -311,6 +427,8 @@ async function loadDemo() {
 /* ---------------------------------------------------------------- misc */
 
 function setBusy(busy) {
+  // The live buttons stay enabled: stopping the camera must always be possible,
+  // even while an upload is in flight.
   ["pick", "pick2", "replay", "reset", "demo"].forEach((id) => {
     const el = $(id);
     if (el) el.disabled = busy || (id === "replay" && state.steps.length < 2);
@@ -330,6 +448,8 @@ function toast(message) {
 
 async function resetSession() {
   stop();
+  if (live.stream) stopLive();
+  state.steps.forEach((s) => URL.revokeObjectURL(s.url));
   const fd = new FormData();
   fd.append("session_id", state.sessionId);
   try { await fetch("/api/session/reset", { method: "POST", body: fd }); } catch {}
@@ -360,6 +480,9 @@ async function resetSession() {
 $("pick").onclick = () => $("file").click();
 $("pick2").onclick = () => $("file").click();
 $("demo").onclick = loadDemo;
+$("live").onclick = toggleLive;
+$("live2").onclick = toggleLive;
+window.addEventListener("beforeunload", () => live.stream && stopLive());
 $("replay").onclick = play;
 $("reset").onclick = resetSession;
 $("file").onchange = (e) => {
