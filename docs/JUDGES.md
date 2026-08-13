@@ -133,42 +133,55 @@ Both models on the same 69-image hand-verified test split, same label space
 | | Accuracy | 95% CI | Macro F1 | Damp F1 | Dry F1 | Wet F1 |
 |---|---|---|---|---|---|---|
 | CLIP zero-shot | 75.4% | [64.0, 84.0] | 0.59 | **0.12** | 0.78 | 0.87 |
-| Fine-tuned ViT | 82.6% | [72.0, 89.8] | **0.77** | **0.57** | 0.81 | 0.91 |
+| Fine-tuned ViT | 82.6% | [72.0, 89.8] | **0.77** | **0.60** | 0.80 | 0.91 |
 
 **The +7.2 point accuracy gap is not statistically significant, and we do not
-claim it.** A McNemar paired test over the same images gives p=0.267: 9 images
-the fine-tune gets right and CLIP misses, against 4 the other way. On 69 images
-that is within noise, and the two confidence intervals overlap. The evaluation
-script prints this verdict on every run so the number cannot quietly drift back
-into a slide.
+claim it.** A McNemar paired test over the same images gives p=0.302: 10 images
+the fine-tune gets right and CLIP misses, against 5 the other way. On 69 images
+that is within noise, and the two confidence intervals overlap almost entirely.
+The evaluation script prints this verdict on every run so the number cannot
+quietly drift back into a slide.
 
-The result that does hold up is per-class:
+Per-class recall is where the models actually differ, and the picture is
+unusually clean:
 
 | Class | CLIP recall | Fine-tuned recall | n | McNemar p |
 |---|---|---|---|---|
 | **Damp** | **0.09** | **0.55** | 11 | 0.062 |
-| Dry | 0.87 | 0.83 | 23 | 1.000 |
-| Wet | 0.89 | 0.91 | 35 | 1.000 |
+| Dry | 0.87 | 0.87 | 23 | 1.000 |
+| Wet | 0.89 | 0.89 | 35 | 1.000 |
 
 ```
 CLIP zero-shot                    Fine-tuned ViT
         Damp  Dry  Wet                    Damp  Dry  Wet
-Damp       1    8    2            Damp       6    3    2
-Dry        2   20    1            Dry        3   19    1
-Wet        2    2   31            Wet        1    2   32
+Damp       1    8    2            Damp       6    4    1
+Dry        2   20    1            Dry        2   20    1
+Wet        2    2   31            Wet        1    3   31
 ```
 
-CLIP finds **1 of 11** damp tracks. The fine-tune finds 6. CLIP has no usable
-representation of the state between dry and wet, so it scatters damp tracks to
-the two extremes and still scores a respectable-looking 75% overall by getting
-the easy classes right. Damp is the condition where a team is on intermediates
-deciding whether to stay out, so a model that cannot see it is not useful for
-the decision this tool exists to support, whatever its headline accuracy.
+**Recall on Dry and Wet is identical. The entire difference is Damp**, where
+CLIP finds 1 of 11 and the fine-tune finds 6. CLIP has no usable representation
+of the state between dry and wet, so it scatters damp tracks to the two extremes
+(8 of 11 called "Dry") and still scores a respectable-looking 75% overall by
+getting the easy classes right.
 
-At p=0.062 that per-class result is borderline rather than proven: a large
-effect measured on 11 images. The honest reading is that the fine-tune learned
+That is the argument for fine-tuning, and it is not an accuracy argument. Damp
+is the condition where a team is on intermediates deciding whether to stay out.
+A model that cannot see it is not useful for the decision this tool exists to
+support, whatever its headline number.
+
+At p=0.062 the Damp result is borderline rather than proven: a large effect
+measured on 11 images. The honest reading is that the fine-tune learned
 something CLIP does not have, and the test set is too small to nail it down.
-More Damp labels would settle it, and that is the top item in `improvement.md`.
+More Damp labels would settle it, and that is the top open item in
+`improvement.md`.
+
+One methodological note, because it changed the numbers. Training-time
+evaluation originally resized the shortest side and centre-cropped, while the
+deployed `transformers.pipeline` resizes the whole frame. The same model scored
+76.8% one way and 82.6% the other, and the best checkpoint was being selected on
+preprocessing that never runs in production. `train_vit.py` now matches the
+deployed path, and the two agree to within 0.0 points.
 <!-- /RESULTS -->
 
 The CLIP fallback stays in the code as a real, swappable path
