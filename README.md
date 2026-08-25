@@ -15,8 +15,7 @@ going". That split is the whole design, and it is explained in full under
 
 Built for the Grand Prix hackathon (AI in Racing Strategy & Decision-Making,
 problem statement 2).
-
-## Running it
+## Running it##
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
