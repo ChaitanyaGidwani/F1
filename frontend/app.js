@@ -13,7 +13,7 @@ const state = {
   classes: ["Dry", "Damp", "Drying", "Wet"],
   wetness: { Dry: 0, Damp: 1, Drying: 1.5, Wet: 2 },
   window: 12,
-  playing: null,
+  playing: null,git addgit sta
 };
 
 /* ---------------------------------------------------------------- health */
